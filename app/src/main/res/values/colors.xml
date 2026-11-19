@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#F4F5FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text">#111827</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="divider">#E5E7EB</color>
+    <!-- Blue-violet from the app icon. -->
+    <color name="accent">#4F46E5</color>
+    <color name="on_accent">#FFFFFF</color>
+    <color name="ok">#16A34A</color>
+    <color name="warn">#D97706</color>
+    <color name="code_bg">#F1F2F8</color>
+    <color name="track_off">#D1D5DB</color>
+    <color name="thumb_off">#FFFFFF</color>
+</resources>

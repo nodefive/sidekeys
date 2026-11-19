@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SideKeys</string>
+    <string name="tagline">Hardware key shortcuts</string>
+    <string name="service_label">SideKeys</string>
+    <string name="service_description">Bixby button toggles the flashlight. While audio plays, a quick press of volume up or down skips to the next or previous track; holding changes the volume. Only hardware key presses are seen; screen content is not accessible to this service. The Bixby button is detected from two system log tags.</string>
+
+    <string name="status_on_title">Active</string>
+    <string name="status_on_text">Running in the background. Shortcuts work with the screen on or off.</string>
+    <string name="status_off_title">Not active</string>
+    <string name="status_off_text">Turn on SideKeys in Accessibility settings to use the shortcuts.</string>
+    <string name="open_settings">Open Accessibility settings</string>
+
+    <string name="logs_title">Log access needed</string>
+    <string name="logs_text">The flashlight shortcut reads the Bixby button from the system log. Grant access once from a computer, then turn the service off and on.</string>
+    <string name="logs_command">adb shell pm grant com.unl0cker.bixby android.permission.READ_LOGS</string>
+
+    <string name="section_features">Features</string>
+    <string name="feature_bixby">Flashlight</string>
+    <string name="feature_bixby_summary">Press the Bixby button to turn the flashlight on or off.</string>
+    <string name="feature_volume">Track skip</string>
+    <string name="feature_volume_summary">While audio plays, a quick press of volume up or down skips to the next or previous track. Hold to change the volume.</string>
+
+    <string name="version_fmt">Version %1$s</string>
+</resources>

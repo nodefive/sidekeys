@@ -12,6 +12,8 @@ Hardware key shortcuts for Samsung Galaxy phones:
 Both features can be switched on and off in the app. The app has no network access and its
 Accessibility service cannot read screen content.
 
+![Main screen, track skip options and the apps list](docs/screenshots.png)
+
 ## Device compatibility
 
 SideKeys needs **Android 10 or newer**.

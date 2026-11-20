@@ -36,6 +36,65 @@
         <item name="android:lineSpacingMultiplier">1.15</item>
     </style>
 
+    <!-- A settings row: text on the left, control on the right. -->
+    <style name="SettingRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingTop">18dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:paddingBottom">18dp</item>
+    </style>
+
+    <!-- A slider row: title and value on top, summary, then the slider. -->
+    <style name="SliderRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingTop">18dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:paddingBottom">10dp</item>
+    </style>
+
+    <style name="SettingText">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="Divider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:layout_marginStart">20dp</item>
+        <item name="android:layout_marginEnd">20dp</item>
+        <item name="android:background">@color/divider</item>
+    </style>
+
+    <style name="SliderValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">12dp</item>
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Slider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:layout_marginStart">-16dp</item>
+        <item name="android:layout_marginEnd">-16dp</item>
+        <item name="android:progressTint">@color/accent</item>
+        <item name="android:thumbTint">@color/accent</item>
+        <item name="android:progressBackgroundTint">@color/track_off</item>
+    </style>
+
     <style name="Toggle">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

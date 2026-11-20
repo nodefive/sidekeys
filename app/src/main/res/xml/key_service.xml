@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Key filtering only. No event types, no window content: the service cannot read
-  or act on what is on screen, it only sees hardware key presses.
+  Key filtering only. No event types, no window content: the service cannot read or act on
+  what is on screen, it only sees hardware key presses.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityFeedbackType="feedbackGeneric"

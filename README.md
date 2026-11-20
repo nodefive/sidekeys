@@ -4,8 +4,10 @@ Hardware key shortcuts for Samsung Galaxy phones:
 
 - **Flashlight on the Bixby button.** Each press of the dedicated Bixby key turns the rear
   flashlight on or off, with the screen on or off.
-- **Track skip on the volume keys.** While audio plays, a quick press of volume up or down
-  skips to the next or previous track. Holding the key changes the volume as usual.
+- **Track skip on the volume keys.** While one of the music apps you choose is playing, a
+  quick press of volume up or down skips to the next or previous track. Holding the key
+  changes the volume as usual. Optionally, a tap followed by a hold seeks forward or back.
+  Anything else that plays (videos, voice notes, audiobooks) keeps normal volume keys.
 
 Both features can be switched on and off in the app. The app has no network access and its
 Accessibility service cannot read screen content.
@@ -42,10 +44,47 @@ app with the screen off depends on the manufacturer's firmware.
 | Key | Condition | Action |
 |---|---|---|
 | Bixby | flashlight feature on | toggle the rear flashlight |
-| Volume up, quick press (< 500 ms) | audio playing, not in a call | next track |
-| Volume down, quick press (< 500 ms) | audio playing, not in a call | previous track |
-| Volume up/down, held | audio playing, not in a call | media volume, one step every 150 ms |
-| Volume up/down | nothing playing, in a call, or feature off | normal system behaviour |
+| Volume up, tap (shorter than the hold delay) | a chosen app is playing, not in a call | next track |
+| Volume down, tap | same | previous track |
+| Volume up/down, held | same | media volume, one step every 150 ms |
+| Volume up, tap then hold | same, seek option on | fast forward at the seek speed while held |
+| Volume down, tap then hold | same, seek option on | rewind at the seek speed while held |
+| Volume up/down, two taps | same, seek option on | two skips |
+| Volume up/down | anything else | normal system behaviour |
+
+### Track skip settings
+
+- **Apps**: track skip only works while a checked app is the one playing, whether it is open
+  on screen or playing in the background. Pre-checked: common music players (Spotify, YouTube
+  Music, Samsung Music, Apple Music, Deezer, Amazon Music, TIDAL, SoundCloud, Pandora,
+  Poweramp, Musicolet, Retro Music, Gramophone) when installed. Edit the list in the app.
+- **Hold delay** (250 to 1000 ms, default 500): how long a press must last to count as a hold.
+  A tap is anything shorter.
+- **Seek with tap and hold** (off by default): tap a volume key, then within 0.3 s press and
+  hold it to seek. Because SideKeys must wait those 0.3 s to tell a tap from the start of this
+  gesture, a single tap skips 0.3 s later while this option is on.
+- **Seek speed** (2× to 30×, default 8×): how fast the position slides while you hold. At 8×,
+  one second of holding moves eight seconds through the track, forward or back. SideKeys moves
+  the position in small `seekTo` steps every 150 ms, so it slides like fast forward on a CD
+  player (you hear short fragments) instead of jumping.
+- **Speed up while holding** (on by default): the longer you hold, the faster it goes. The
+  seek speed doubles every 2 seconds held, up to 8 times (with the default 8×: 8×, 16×, 32×,
+  64×), and starts over at the next hold.
+
+Track skip needs **notification access**. Android only tells an app which app is playing,
+and lets it skip or seek there, through `MediaSessionManager.getActiveSessions()`, which
+requires notification access. SideKeys registers an empty notification listener for that and
+never reads notifications. Without the access, the volume keys stay normal. Grant it in
+Settings > Notifications > Notification access (the app shows a shortcut), or over adb:
+
+```
+adb shell cmd notification allow_listener com.unl0cker.bixby/com.unl0cker.bixby.MediaListener
+```
+
+With a player that does not support seeking, SideKeys sends `MEDIA_FAST_FORWARD` and
+`MEDIA_REWIND` instead, which many players ignore.
+
+Release notes for each version are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -55,7 +94,8 @@ app with the screen off depends on the manufacturer's firmware.
    ```
    adb shell pm grant com.unl0cker.bixby android.permission.READ_LOGS
    ```
-3. Open SideKeys and tap **Open Accessibility settings**, then turn SideKeys on.
+3. Open SideKeys and tap **Open Accessibility settings**, then turn SideKeys on. For track
+   skip, also tap **Open notification access settings** and allow SideKeys.
    On Android 13 and newer, sideloaded apps first need App info > menu (three dots) >
    **Allow restricted settings** before Accessibility can be turned on, and Android asks
    once to allow log access.
@@ -73,12 +113,15 @@ or both apps toggle the flashlight and cancel each other out.
 ### Volume keys
 
 An Accessibility service with `flagRequestFilterKeyEvents` only (`canRetrieveWindowContent`
-is false and no event types are requested) receives hardware key presses. While music plays
-and the phone is not in a call, it holds a volume key press:
+is false and no event types are requested) receives hardware key presses. On a volume key
+press it asks `MediaSessionManager` for the session in `STATE_PLAYING`. When that session
+belongs to a chosen app and the phone is not in a call, it holds the press:
 
-- released before 500 ms: sends `MEDIA_NEXT` or `MEDIA_PREVIOUS` through `AudioManager`, so it
-  works with any player that handles media keys;
-- held longer: adjusts the media volume one step every 150 ms and shows the volume panel.
+- released before the hold delay: calls `skipToNext` or `skipToPrevious` on that session
+  (with the seek option on, after waiting 0.3 s for a second press);
+- held longer: adjusts the media volume one step every 150 ms and shows the volume panel;
+- tapped, then pressed again and held: scrubs the playing session forward or back (see Track
+  skip settings).
 
 In every other case the key passes through untouched.
 
@@ -104,6 +147,8 @@ runs while the flashlight feature is on.
 |---|---|
 | `READ_LOGS` (granted over adb) | Bixby key detection |
 | Accessibility service (key events only) | volume keys; keeps the app running for the log watcher |
+| Notification access (empty listener) | track skip: which app is playing, skipping and seeking in it; notifications are not read |
+| Package visibility for launcher apps (`<queries>`) | listing apps in the Apps screen |
 
 No internet permission, no camera permission, no storage access.
 

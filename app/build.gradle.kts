@@ -14,8 +14,8 @@ android {
         applicationId = "com.unl0cker.bixby"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 9
+        versionName = "1.8"
     }
 
     buildTypes {

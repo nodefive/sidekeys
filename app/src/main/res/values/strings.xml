@@ -3,7 +3,7 @@
     <string name="app_name">SideKeys</string>
     <string name="tagline">Hardware key shortcuts</string>
     <string name="service_label">SideKeys</string>
-    <string name="service_description">Bixby button toggles the flashlight. While audio plays, a quick press of volume up or down skips to the next or previous track; holding changes the volume. Only hardware key presses are seen; screen content is not accessible to this service. The Bixby button is detected from two system log tags.</string>
+    <string name="service_description">Bixby button toggles the flashlight. While one of your chosen music apps plays, a quick press of volume up or down skips to the next or previous track; holding changes the volume. Only hardware key presses are seen; screen content is not accessible to this service. The Bixby button is detected from two system log tags.</string>
 
     <string name="status_on_title">Active</string>
     <string name="status_on_text">Running in the background. Shortcuts work with the screen on or off.</string>
@@ -15,11 +15,37 @@
     <string name="logs_text">The flashlight shortcut reads the Bixby button from the system log. Grant access once from a computer, then turn the service off and on.</string>
     <string name="logs_command">adb shell pm grant com.unl0cker.bixby android.permission.READ_LOGS</string>
 
+    <string name="notif_title">Notification access needed</string>
+    <string name="notif_text">Track skip only works while one of your chosen apps is playing, and Android only tells apps with notification access which app that is. The same access lets SideKeys skip and seek in that app. SideKeys does not read your notifications.</string>
+    <string name="open_notif_settings">Open notification access settings</string>
+
     <string name="section_features">Features</string>
     <string name="feature_bixby">Flashlight</string>
     <string name="feature_bixby_summary">Press the Bixby button to turn the flashlight on or off.</string>
     <string name="feature_volume">Track skip</string>
-    <string name="feature_volume_summary">While audio plays, a quick press of volume up or down skips to the next or previous track. Hold to change the volume.</string>
+    <string name="feature_volume_summary">While one of your chosen apps plays, a quick press of volume up or down skips to the next or previous track. Hold to change the volume.</string>
+
+    <string name="section_track_skip">Track skip</string>
+    <string name="feature_apps">Apps</string>
+    <plurals name="apps_summary">
+        <item quantity="one">Works while %d app is playing</item>
+        <item quantity="other">Works while one of %d apps is playing</item>
+    </plurals>
+    <string name="apps_explain">Track skip works while a checked app is the one playing. Anything else, such as videos, voice notes or audiobooks, keeps normal volume keys.</string>
+    <string name="feature_hold">Hold delay</string>
+    <string name="feature_hold_summary">How long to hold a volume key before it changes the volume instead of skipping.</string>
+    <string name="hold_value_fmt">%d ms</string>
+    <string name="feature_seek">Seek with tap and hold</string>
+    <string name="feature_seek_summary">Tap a volume key, then press and hold it: up seeks forward, down seeks back. A single tap then skips after a short pause.</string>
+    <string name="feature_seek_step">Seek speed</string>
+    <string name="feature_seek_step_summary">How fast the track slides while you hold: at 8×, one second of holding moves eight seconds through the track.</string>
+    <string name="seek_step_fmt">%d×</string>
+    <string name="feature_seek_ramp">Speed up while holding</string>
+    <string name="feature_seek_ramp_summary">The longer you hold, the faster it goes: the seek speed doubles every 2 seconds, up to 8 times.</string>
+
+    <string name="chevron">›</string>
+    <string name="back">Back</string>
+    <string name="back_arrow">←</string>
 
     <string name="version_fmt">Version %1$s</string>
 </resources>

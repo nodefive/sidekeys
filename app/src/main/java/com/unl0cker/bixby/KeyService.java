@@ -1,11 +1,16 @@
 package com.unl0cker.bixby;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.ComponentName;
 import android.content.SharedPreferences;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -15,7 +20,10 @@ import android.view.accessibility.AccessibilityEvent;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Hardware key handling.
@@ -27,34 +35,64 @@ import java.util.Locale;
  *   PhoneWindowManagerExt: getIntentBixbyService  logged for the Bixby key only
  * A getIntentBixbyService line right after a key-down is one Bixby press.
  *
- * Volume keys while music plays (not in a call): a quick press sends next/previous track,
- * holding past LONG_PRESS_MS changes the media volume one step every REPEAT_MS.
- * Everything else, and volume keys when nothing plays, passes through untouched.
+ * Volume keys while music plays (not in a call), per key (up = forward, down = back):
+ *   tap                  next / previous track
+ *   hold                 media volume, one step every VOLUME_REPEAT_MS after the hold delay
+ *   tap, then hold       scrub forward / back at the seek speed (seek option on): small seekTo
+ *                        steps every SEEK_TICK_MS, so the position slides instead of jumping;
+ *                        with speed-up on, the speed doubles every SEEK_RAMP_MS held (max 8x)
+ *   tap, tap             two skips (seek option on)
+ * With seek on, a tap waits SECOND_PRESS_WINDOW_MS for a second press before skipping.
+ * Only while one of the chosen apps is the one playing (its media session is in
+ * STATE_PLAYING). Finding that session needs notification access (MediaListener); without
+ * it, or when another app plays (videos, voice notes, audiobooks), keys pass through
+ * untouched.
  *
  * Both features follow the switches on the main screen (Prefs). The Accessibility service
  * also keeps the process alive for the log watcher.
  */
 public class KeyService extends AccessibilityService {
 
-    /** Quick presses measured on the S10e lasted 260-384 ms. */
-    private static final long LONG_PRESS_MS = 500;
-    private static final long REPEAT_MS = 150;
+    private static final long VOLUME_REPEAT_MS = 150;
+    private static final long SEEK_TICK_MS = 150;
+    /** Speed up while holding: the seek speed doubles every SEEK_RAMP_MS, at most 2^3 = 8x. */
+    private static final long SEEK_RAMP_MS = 2000;
+    private static final int SEEK_RAMP_MAX_DOUBLINGS = 3;
+    private static final long SECOND_PRESS_WINDOW_MS = 300;
     private static final long LOG_RESTART_MS = 2000;
+
+    /** Volume key gesture state. */
+    private enum Gesture { IDLE, FIRST_DOWN, WAIT_SECOND, SECOND_DOWN, VOLUME, SEEK }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private SharedPreferences prefs;
     private boolean volumeEnabled;
+    private long holdMs;
+    private boolean seekEnabled;
+    private int seekSpeed;
+    private boolean seekRamp;
+    private Set<String> apps = new HashSet<>();
     private LogWatcher watcher;
 
     private AudioManager audio;
+    private MediaSessionManager sessions;
     private CameraManager camera;
     private String torchId;
     private boolean torchOn;
 
-    /** Volume key currently owned by this service, or 0. */
-    private int heldKey;
-    private boolean longPressActive;
+    private Gesture gesture = Gesture.IDLE;
+    /** Volume key of the current gesture. */
+    private int gestureKey;
+    /**
+     * Player being scrubbed, picked once when the seek starts: right after a seekTo the session
+     * reports buffering, so looking it up again on every tick would lose it.
+     */
+    private MediaController seekController;
+    /** Position the scrub has reached; each tick moves it by the current speed * SEEK_TICK_MS. */
+    private long seekPosition;
+    /** When the current scrub started (elapsedRealtime), for speeding up while holding. */
+    private long seekStartedAt;
 
     /** Kept as a field: SharedPreferences holds listeners weakly. */
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener =
@@ -73,18 +111,42 @@ public class KeyService extends AccessibilityService {
         @Override
         public void run() {
             adjustVolume();
-            handler.postDelayed(this, REPEAT_MS);
+            handler.postDelayed(this, VOLUME_REPEAT_MS);
         }
     };
 
-    private final Runnable longPressStart = () -> {
-        longPressActive = true;
-        volumeRepeat.run();
+    private final Runnable seekRepeat = new Runnable() {
+        @Override
+        public void run() {
+            long step = currentSeekSpeed() * SEEK_TICK_MS;
+            scrubTo(seekPosition + (gestureKey == KeyEvent.KEYCODE_VOLUME_UP ? step : -step));
+            handler.postDelayed(this, SEEK_TICK_MS);
+        }
+    };
+
+    /** Key held past the hold delay: first press changes volume, second press seeks. */
+    private final Runnable holdStart = () -> {
+        if (gesture == Gesture.FIRST_DOWN) {
+            gesture = Gesture.VOLUME;
+            volumeRepeat.run();
+        } else if (gesture == Gesture.SECOND_DOWN) {
+            gesture = Gesture.SEEK;
+            startSeek();
+        }
+    };
+
+    /** No second press came after a tap: it was a plain skip. */
+    private final Runnable pendingSkip = () -> {
+        if (gesture == Gesture.WAIT_SECOND) {
+            gesture = Gesture.IDLE;
+            skip(gestureKey);
+        }
     };
 
     @Override
     protected void onServiceConnected() {
         audio = getSystemService(AudioManager.class);
+        sessions = getSystemService(MediaSessionManager.class);
         camera = getSystemService(CameraManager.class);
         torchId = findTorchCamera();
         if (torchId != null) {
@@ -97,6 +159,11 @@ public class KeyService extends AccessibilityService {
 
     private void applySettings() {
         volumeEnabled = Prefs.volumeEnabled(prefs);
+        holdMs = Prefs.holdMs(prefs);
+        seekEnabled = Prefs.seekEnabled(prefs);
+        seekSpeed = Prefs.seekSpeed(prefs);
+        seekRamp = Prefs.seekRamp(prefs);
+        apps = Prefs.apps(prefs);
         boolean bixby = Prefs.bixbyEnabled(prefs) && torchId != null;
         if (bixby && watcher == null) {
             watcher = new LogWatcher();
@@ -123,42 +190,164 @@ public class KeyService extends AccessibilityService {
     private boolean onVolumeKey(KeyEvent event) {
         int code = event.getKeyCode();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (event.getRepeatCount() > 0 || heldKey != 0) {
-                return heldKey == code;
+            if (event.getRepeatCount() > 0) {
+                return keyHeld() && gestureKey == code;
             }
-            if (!volumeEnabled || !mediaPlaying()) {
+            if (gesture == Gesture.WAIT_SECOND) {
+                handler.removeCallbacks(pendingSkip);
+                if (code == gestureKey) {
+                    gesture = Gesture.SECOND_DOWN;
+                    handler.postDelayed(holdStart, holdMs);
+                    return true;
+                }
+                // The other volume key: finish the first tap, then treat this press as new.
+                gesture = Gesture.IDLE;
+                skip(gestureKey);
+            } else if (gesture != Gesture.IDLE) {
+                return gestureKey == code;
+            }
+            if (!volumeEnabled || !shouldSkipTracks()) {
                 return false;
             }
-            heldKey = code;
-            longPressActive = false;
-            handler.postDelayed(longPressStart, LONG_PRESS_MS);
+            gesture = Gesture.FIRST_DOWN;
+            gestureKey = code;
+            handler.postDelayed(holdStart, holdMs);
             return true;
         }
         // Finish a press that started while the feature was on, even if it was just turned off.
-        if (event.getAction() == KeyEvent.ACTION_UP && heldKey == code) {
-            handler.removeCallbacks(longPressStart);
+        if (event.getAction() == KeyEvent.ACTION_UP && keyHeld() && code == gestureKey) {
+            handler.removeCallbacks(holdStart);
             handler.removeCallbacks(volumeRepeat);
-            if (!longPressActive) {
-                sendMediaKey(code == KeyEvent.KEYCODE_VOLUME_UP
-                        ? KeyEvent.KEYCODE_MEDIA_NEXT
-                        : KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+            handler.removeCallbacks(seekRepeat);
+            seekController = null;
+            switch (gesture) {
+                case FIRST_DOWN:
+                    if (seekEnabled) {
+                        gesture = Gesture.WAIT_SECOND;
+                        handler.postDelayed(pendingSkip, SECOND_PRESS_WINDOW_MS);
+                    } else {
+                        gesture = Gesture.IDLE;
+                        skip(code);
+                    }
+                    break;
+                case SECOND_DOWN:
+                    gesture = Gesture.IDLE;
+                    skip(code);
+                    skip(code);
+                    break;
+                default:
+                    gesture = Gesture.IDLE;
+                    break;
             }
-            heldKey = 0;
-            longPressActive = false;
             return true;
         }
         return false;
     }
 
-    private boolean mediaPlaying() {
-        return audio.isMusicActive() && audio.getMode() == AudioManager.MODE_NORMAL;
+    private boolean keyHeld() {
+        return gesture == Gesture.FIRST_DOWN || gesture == Gesture.SECOND_DOWN
+                || gesture == Gesture.VOLUME || gesture == Gesture.SEEK;
+    }
+
+    private boolean shouldSkipTracks() {
+        if (!audio.isMusicActive() || audio.getMode() != AudioManager.MODE_NORMAL) {
+            return false;
+        }
+        return allowedPlayer() != null;
+    }
+
+    /**
+     * The media session that is playing, if it belongs to one of the chosen apps. Null when
+     * another app is playing, nothing is, or notification access is missing.
+     */
+    private MediaController allowedPlayer() {
+        List<MediaController> controllers;
+        try {
+            controllers = sessions.getActiveSessions(new ComponentName(this, MediaListener.class));
+        } catch (SecurityException e) {
+            return null;
+        }
+        for (MediaController c : controllers) {
+            PlaybackState s = c.getPlaybackState();
+            if (s != null && s.getState() == PlaybackState.STATE_PLAYING) {
+                return apps.contains(c.getPackageName()) ? c : null;
+            }
+        }
+        return null;
     }
 
     private void adjustVolume() {
-        int direction = heldKey == KeyEvent.KEYCODE_VOLUME_UP
+        int direction = gestureKey == KeyEvent.KEYCODE_VOLUME_UP
                 ? AudioManager.ADJUST_RAISE
                 : AudioManager.ADJUST_LOWER;
         audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+    }
+
+    /** Skips in the allowed player; media keys if its session is between states. */
+    private void skip(int volumeKey) {
+        boolean next = volumeKey == KeyEvent.KEYCODE_VOLUME_UP;
+        MediaController controller = allowedPlayer();
+        if (controller != null) {
+            if (next) {
+                controller.getTransportControls().skipToNext();
+            } else {
+                controller.getTransportControls().skipToPrevious();
+            }
+            return;
+        }
+        sendMediaKey(next ? KeyEvent.KEYCODE_MEDIA_NEXT : KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+    }
+
+    /**
+     * Starts scrubbing the allowed player from its current position. If it cannot seek, sends
+     * one fast-forward/rewind media key instead (many players ignore it) and does not tick.
+     */
+    private void startSeek() {
+        boolean forward = gestureKey == KeyEvent.KEYCODE_VOLUME_UP;
+        MediaController controller = allowedPlayer();
+        PlaybackState state = controller != null ? controller.getPlaybackState() : null;
+        if (state == null || (state.getActions() & PlaybackState.ACTION_SEEK_TO) == 0) {
+            sendMediaKey(forward ? KeyEvent.KEYCODE_MEDIA_FAST_FORWARD : KeyEvent.KEYCODE_MEDIA_REWIND);
+            return;
+        }
+        long position = state.getPosition();
+        if (state.getState() == PlaybackState.STATE_PLAYING) {
+            long elapsed = SystemClock.elapsedRealtime() - state.getLastPositionUpdateTime();
+            position += (long) (elapsed * state.getPlaybackSpeed());
+        }
+        seekController = controller;
+        seekPosition = position;
+        seekStartedAt = SystemClock.elapsedRealtime();
+        seekRepeat.run();
+    }
+
+    /** Seek speed, doubled for every SEEK_RAMP_MS held when speeding up is on. */
+    private long currentSeekSpeed() {
+        if (!seekRamp) {
+            return seekSpeed;
+        }
+        long held = SystemClock.elapsedRealtime() - seekStartedAt;
+        int doublings = (int) Math.min(held / SEEK_RAMP_MS, SEEK_RAMP_MAX_DOUBLINGS);
+        return (long) seekSpeed << doublings;
+    }
+
+    /**
+     * One scrub tick. The position is tracked here rather than read back from the player, so it
+     * moves at exactly seekSpeed whatever the player does between ticks.
+     */
+    private void scrubTo(long target) {
+        MediaController controller = seekController;
+        if (controller == null) {
+            return;
+        }
+        MediaMetadata metadata = controller.getMetadata();
+        long duration = metadata != null ? metadata.getLong(MediaMetadata.METADATA_KEY_DURATION) : 0;
+        target = Math.max(0, target);
+        if (duration > 0) {
+            target = Math.min(target, Math.max(0, duration - 1000));
+        }
+        seekPosition = target;
+        controller.getTransportControls().seekTo(target);
     }
 
     private void sendMediaKey(int keyCode) {
@@ -254,6 +443,7 @@ public class KeyService extends AccessibilityService {
 
     // ---- lifecycle ---------------------------------------------------------------------
 
+    /** Tracks the package of the app in front; ignores overlays, keyboards and this app. */
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         // No event types requested.
